@@ -461,57 +461,100 @@ State that the final AI-supported recommendation is advisory only. The final ref
 
 @st.cache_resource
 def get_bedrock_client():
-    """Create an AWS Bedrock runtime client when AWS secrets are configured."""
-    access_key = get_secret("AWS_ACCESS_KEY_ID")
-    secret_key = get_secret("AWS_SECRET_ACCESS_KEY")
-    region = get_secret("AWS_DEFAULT_REGION")
-
-    if not all([access_key, secret_key, region]):
-        return None
-
     session = boto3.Session(
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name=region,
+        aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"],
+        region_name=st.secrets["AWS_DEFAULT_REGION"]
     )
 
     return session.client(
         service_name="bedrock-runtime",
-        region_name=region,
+        region_name=st.secrets["AWS_DEFAULT_REGION"]
     )
+# def get_bedrock_client():
+#     """Create an AWS Bedrock runtime client when AWS secrets are configured."""
+#     access_key = get_secret("AWS_ACCESS_KEY_ID")
+#     secret_key = get_secret("AWS_SECRET_ACCESS_KEY")
+#     region = get_secret("AWS_DEFAULT_REGION")
+
+#     if not all([access_key, secret_key, region]):
+#         return None
+
+#     session = boto3.Session(
+#         aws_access_key_id=access_key,
+#         aws_secret_access_key=secret_key,
+#         region_name=region,
+#     )
+
+#     return session.client(
+#         service_name="bedrock-runtime",
+#         region_name=region,
+#     )
 
 
-def get_secret(key, default=None):
-    """Read optional Streamlit secrets safely in local development."""
-    try:
-        return st.secrets.get(key, default)
-    except StreamlitSecretNotFoundError:
-        return default
+# def get_secret(key, default=None):
+#     """Read optional Streamlit secrets safely in local development."""
+#     try:
+#         return st.secrets.get(key, default)
+#     except StreamlitSecretNotFoundError:
+#         return default
 
 
-def call_bedrock_llm(prompt):
-    """Send the generated prompt to AWS Bedrock and return the explanation text."""
+# def call_bedrock_llm(prompt):
+#     """Send the generated prompt to AWS Bedrock and return the explanation text."""
+#     client = get_bedrock_client()
+
+#     if client is None:
+#         return (
+#             "LLM explanation is not configured yet. Add AWS_ACCESS_KEY_ID, "
+#             "AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION to Streamlit secrets "
+#             "to enable Bedrock explanations. The generated prompt above can still "
+#             "be reviewed manually."
+#         )
+
+#     try:
+#         response = client.converse(
+#             modelId=BEDROCK_MODEL_ID,
+#             messages=[{"role": "user", "content": [{"text": prompt}]}],
+#             inferenceConfig={"maxTokens": 500, "temperature": 0.2},
+#         )
+#         return response["output"]["message"]["content"][0]["text"]
+#     except ClientError as error:
+#         return f"Bedrock ClientError: {error.response['Error']['Message']}"
+#     except Exception as error:
+#         return f"Unexpected error calling Bedrock: {str(error)}"
+
+def call_bedrock_llm(prompt: str) -> str:
     client = get_bedrock_client()
 
-    if client is None:
-        return (
-            "LLM explanation is not configured yet. Add AWS_ACCESS_KEY_ID, "
-            "AWS_SECRET_ACCESS_KEY, and AWS_DEFAULT_REGION to Streamlit secrets "
-            "to enable Bedrock explanations. The generated prompt above can still "
-            "be reviewed manually."
-        )
+    model_id = "anthropic.claude-3-haiku-20240307-v1:0"  # change based on your approved Bedrock model
 
     try:
         response = client.converse(
-            modelId=BEDROCK_MODEL_ID,
-            messages=[{"role": "user", "content": [{"text": prompt}]}],
-            inferenceConfig={"maxTokens": 500, "temperature": 0.2},
+            modelId=model_id,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            inferenceConfig={
+                "maxTokens": 500,
+                "temperature": 0.2
+            }
         )
+
         return response["output"]["message"]["content"][0]["text"]
-    except ClientError as error:
-        return f"Bedrock ClientError: {error.response['Error']['Message']}"
-    except Exception as error:
-        return f"Unexpected error calling Bedrock: {str(error)}"
+
+    except ClientError as e:
+        return f"Bedrock ClientError: {e.response['Error']['Message']}"
+
+    except Exception as e:
+        return f"Unexpected error calling Bedrock: {str(e)}"
 
 
 def apply_role_scope(data, role, case_manager):
