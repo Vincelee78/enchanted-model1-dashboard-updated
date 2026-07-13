@@ -1,0 +1,19 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Local secrets and environment files
+.env
+.env.*
+.streamlit/secrets.toml
+
+# OS/editor noise
+.DS_Store
+.vscode/
+.idea/
+
