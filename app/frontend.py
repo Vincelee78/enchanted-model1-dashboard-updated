@@ -33,8 +33,8 @@ CATEGORY_OPTIONS = [
     "Pending Monitoring",
     "Needs Clinical Review",
     "Not Suitable at Current Review",
-    "Pending CM",
-    "Pending Clinician",
+    # "Pending CM",
+    # "Pending Clinician",
 ]
 
 # Options used in the final decision dropdown on the Patient Review tab.
