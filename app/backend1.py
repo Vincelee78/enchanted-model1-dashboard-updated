@@ -64,9 +64,6 @@ BASE_DISPLAY_COLUMNS = [
     "los_days",
     "days_to_edd",
     "rule_category",
-    "red_flags",
-    "amber_flags",
-    "review_flags",
     "risk_score",
     "risk_band",
     "workflow_status",
@@ -87,9 +84,8 @@ COLUMN_LABELS = {
     "los_days": "Days in Hospital",
     "days_to_edd": "Days to EDD",
     "rule_category": "Clinical Screening",
-    "red_flags": "Hard Exclusion Flags",
-    "amber_flags": "Monitoring Flags",
-    "review_flags": "Clinical Review Flags",
+    "red_flags": "Red Flags",
+    "amber_flags": "Amber Flags",
     "risk_score": "Risk Score",
     "risk_band": "Risk Band",
     "workflow_status": "Status",
@@ -112,152 +108,96 @@ SORT_OPTIONS = {
 }
 
 
-
 def rule_based_screening(row):
-    """Apply the current prototype rules and return one of four actionable buckets.
-
-    This is an interim MVP implementation using fields available in the sample
-    CSV. It does not yet implement the full criteria catalogue because the
-    actual Epic / EAI mappings and several source fields are still pending.
-    """
+    """Classify a patient as Red, Amber, or Green using deterministic rules."""
     red_flags = []
-    monitoring_flags = []
-    review_flags = []
+    amber_flags = []
 
-    def number(field):
-        return pd.to_numeric(row.get(field), errors="coerce")
-
-    age = number("age")
-    if pd.notna(age) and age < 18:
-        red_flags.append("Age < 18 years")
-
-    if row.get("pregnancy_flag", 0) == 1:
+    if row["pregnancy_flag"] == 1:
         red_flags.append("Pregnancy")
 
-    oxygen_device = str(row.get("oxygen_device", "")).strip().lower()
-    oxygen_flow = number("oxygen_flow_rate")
-    spo2 = number("spo2")
-    copd = row.get("copd_flag", 0) == 1
+    if row["news2"] >= 5:
+        red_flags.append("NEWS2 >= 5")
+    elif row["news2"] > 0:
+        amber_flags.append("NEWS2 > 0")
 
-    if any(device in oxygen_device for device in ["venti", "non-rebreather", "nrm"]):
-        red_flags.append("Venti mask / non-rebreather mask")
+    if row["oxygen_flow_rate"] > 2:
+        red_flags.append("Oxygen flow > 2 L/min")
+    elif row["oxygen_flow_rate"] > 0:
+        amber_flags.append("Low-flow O2")
 
-    on_room_air = (
-        (pd.notna(oxygen_flow) and oxygen_flow == 0)
-        or oxygen_device in {"", "room air", "ra", "none"}
-    )
-    if on_room_air and pd.notna(spo2):
-        if copd and spo2 < 88:
-            red_flags.append("SpO2 < 88% on room air with special target")
-        elif not copd and spo2 < 92:
-            red_flags.append("SpO2 < 92% on room air")
+    if row["copd_flag"] == 1:
+        if row["spo2"] < 88:
+            red_flags.append("COPD SpO2 < 88")
+        elif row["spo2"] <= 92:
+            amber_flags.append("COPD SpO2 88-92")
+    else:
+        if row["spo2"] < 91:
+            red_flags.append("SpO2 < 91")
+        elif row["spo2"] < 96:
+            amber_flags.append("SpO2 < 96")
 
-    if pd.notna(oxygen_flow) and oxygen_flow > 2:
-        monitoring_flags.append("Supplemental oxygen > 2 L/min via nasal prongs")
+    if row["temperature"] >= 38:
+        red_flags.append("Temperature >= 38")
+    elif row["temperature"] >= 37.5:
+        amber_flags.append("Temperature 37.5-37.9")
 
-    temperature = number("temperature")
-    if pd.notna(temperature):
-        if temperature < 35:
-            red_flags.append("Temperature < 35°C")
-        elif temperature >= 38:
-            monitoring_flags.append("Temperature ≥ 38°C")
+    if row["heart_rate"] >= 120:
+        red_flags.append("Heart rate >= 120")
+    elif row["heart_rate"] >= 100:
+        amber_flags.append("Heart rate 100-119")
 
-    heart_rate = number("heart_rate")
-    if pd.notna(heart_rate):
-        if heart_rate < 40 or heart_rate >= 120:
-            red_flags.append("Heart rate outside 40–119 bpm")
-        elif 40 <= heart_rate <= 59 or 100 <= heart_rate <= 119:
-            monitoring_flags.append("Heart rate in amber range")
+    if row["pending_surgery_flag"] == 1:
+        red_flags.append("Pending surgery")
 
-    systolic_bp = number("systolic_bp")
-    if pd.notna(systolic_bp):
-        if systolic_bp < 80 or systolic_bp > 180:
-            red_flags.append("Systolic BP outside 80–180 mmHg")
-        elif 80 <= systolic_bp <= 89 or 161 <= systolic_bp <= 180:
-            monitoring_flags.append("Systolic BP in amber range")
+    if row["active_iv_med_flag"] == 1:
+        red_flags.append("IV medication")
 
-    diastolic_bp = number("diastolic_bp")
-    if pd.notna(diastolic_bp):
-        if diastolic_bp < 40 or diastolic_bp > 110:
-            red_flags.append("Diastolic BP outside 40–110 mmHg")
-        elif 40 <= diastolic_bp <= 49 or 91 <= diastolic_bp <= 110:
-            monitoring_flags.append("Diastolic BP in amber range")
+    if row["active_procedure_flag"] == 1:
+        amber_flags.append("Procedure order")
 
-    # Case-manager discussion classified the currently available lab triggers
-    # as review / monitoring items rather than automatic no-go criteria.
-    hb = number("hb")
-    if pd.notna(hb) and hb <= 9:
-        monitoring_flags.append("Haemoglobin ≤ 9")
-
-    platelet = number("platelet")
-    if pd.notna(platelet) and (platelet < 100 or platelet >= 1000):
-        monitoring_flags.append("Platelet count outside case-manager review range")
-
-    anc = number("anc")
-    if pd.notna(anc) and anc < 1.0:
-        monitoring_flags.append("ANC < 1.0")
-
-    sodium = number("sodium")
-    if pd.notna(sodium) and (sodium < 130 or sodium >= 150):
-        monitoring_flags.append("Serum sodium outside 130–149")
-
-    potassium = number("potassium")
-    if pd.notna(potassium) and (potassium < 3.0 or potassium >= 5.3):
-        monitoring_flags.append("Serum potassium outside 3.0–5.2")
-
-    if row.get("pending_surgery_flag", 0) == 1:
-        monitoring_flags.append("Planned / pending surgery requires reassessment")
-
-    # Generic flags are too broad to determine the exact cheat-sheet rule.
-    # Route them for human review until medication/procedure/precaution details
-    # are mapped to specific Epic / EAI fields.
-    if row.get("active_iv_med_flag", 0) == 1:
-        review_flags.append("Active IV medication requires medication-specific review")
-
-    if row.get("active_procedure_flag", 0) == 1:
-        review_flags.append("Active procedure requires clinical review")
-
-    if row.get("active_precaution_flag", 0) == 1:
-        review_flags.append("Active precaution requires clearance / review")
+    if row["active_precaution_flag"] == 1:
+        amber_flags.append("Precaution order")
 
     if red_flags:
-        category = "Not Suitable at Current Review"
-    elif review_flags:
-        category = "Needs Clinical Review"
-    elif monitoring_flags:
-        category = "Pending Monitoring"
+        category = "Red - No-Go"
+    elif amber_flags:
+        category = "Amber - Review Required"
     else:
-        category = "Potential CH Candidate"
+        category = "Green - Potential Candidate"
 
-    return category, red_flags, monitoring_flags, review_flags
-
+    return category, red_flags, amber_flags
 
 
 def nursing_operational_assessment(row):
-    """Assess nursing / operational complexity without making a final decision."""
+    """Assess operational nursing suitability and return nursing flags."""
     nursing_flags = []
 
-    if row.get("isolation_requirement") == "Airborne":
-        nursing_flags.append("Airborne isolation / clearance review")
+    if row["isolation_requirement"] == "Airborne":
+        nursing_flags.append("Airborne isolation requirement")
 
-    if row.get("infectious_status") == "Active infection":
+    if row["infectious_status"] == "Active infection":
         nursing_flags.append("Active infectious concern")
 
-    if row.get("wound_care_need") == "Complex":
+    if row["wound_care_need"] == "Complex":
         nursing_flags.append("Complex wound care")
 
-    if row.get("behavioural_concern_flag", 0) == 1:
+    if row["behavioural_concern_flag"] == 1:
         nursing_flags.append("Behavioural concern")
 
-    if row.get("nursing_complexity") == "High":
+    if row["nursing_complexity"] == "High":
         nursing_flags.append("High nursing complexity")
 
-    if row.get("social_support_concern", 0) == 1:
+    if row["social_support_concern"] == 1:
         nursing_flags.append("Social support concern")
 
-    nursing_status = (
-        "Nursing Review Required" if nursing_flags else "Nursing Suitable"
-    )
+    if "Airborne isolation requirement" in nursing_flags:
+        nursing_status = "Nursing Not Suitable"
+    elif nursing_flags:
+        nursing_status = "Nursing Review Required"
+    else:
+        nursing_status = "Nursing Suitable"
+
     return nursing_status, nursing_flags
 
 
@@ -289,28 +229,22 @@ def risk_band(probability):
     return "Low Risk"
 
 
-
 def right_siting_recommendation(row):
-    """Combine the four-bucket screen with service, nursing, risk and acceptance."""
-    if row["rule_category"] == "Not Suitable at Current Review":
+    """Combine clinical, service, nursing, risk, and acceptance inputs."""
+    if row["rule_category"] == "Red - No-Go":
         return "Continue Acute Hospital care"
 
-    if row["rule_category"] == "Pending Monitoring":
-        return "Monitor and reassess"
-
-    if row["rule_category"] == "Needs Clinical Review":
-        return "Further clinical / nursing review required"
-
     if row["service_suitability"] == "Service Not Suitable for JCH":
-        return "Further clinical / service review required"
+        return "Continue Acute Hospital care"
 
-    if row["nursing_status"] == "Nursing Review Required":
-        return "Further clinical / nursing review required"
+    if row["nursing_status"] == "Nursing Not Suitable":
+        return "Continue Acute Hospital care"
 
     if (
         row["service_need"] in ["Long-term IV antibiotics", "Lower-acuity monitoring"]
         and row["nursing_complexity"] == "Low"
         and row["patient_acceptance_likelihood"] in ["High", "Medium"]
+        and row["rule_category"] != "Red - No-Go"
     ):
         return "Hospital-at-Home review"
 
@@ -324,32 +258,23 @@ def right_siting_recommendation(row):
     return "Further clinical / nursing review required"
 
 
-
 def ai_review_recommendation(row):
-    """Produce an advisory next action for the four-bucket workflow."""
-    recommendations = {
-        "Not Suitable at Current Review": (
-            "Not suitable at current review; no active CH review unless new information emerges"
-        ),
-        "Pending Monitoring": (
-            "Continue monitoring and reassess when clinical data or pending results change"
-        ),
-        "Needs Clinical Review": (
-            "Case manager / clinician review required before CH shortlisting"
-        ),
-    }
-    if row["rule_category"] in recommendations:
-        return recommendations[row["rule_category"]]
+    """Produce the short recommendation shown to reviewers in the dashboard."""
+    if row["right_siting_recommendation"] == "Continue Acute Hospital care":
+        return "Continue Acute Hospital care; not suitable for immediate CH transfer"
 
     if row["right_siting_recommendation"] == "Hospital-at-Home review":
         return "Consider Hospital-at-Home review"
 
     if row["right_siting_recommendation"] == "Community Hospital review":
         if row["patient_acceptance_likelihood"] == "Low":
-            return "Potential CH candidate; counselling likely required"
-        return "Potential CH candidate for case manager confirmation"
+            return "Community Hospital review; counselling likely required"
+        return "Community Hospital referral review"
 
-    return "Further clinical / nursing review required before right-siting decision"
+    if row["right_siting_recommendation"] == "Further clinical / nursing review required":
+        return "Further clinical / nursing review required before right-siting decision"
+
+    return "Pending review"
 
 
 def assign_case_manager(row):
@@ -362,16 +287,9 @@ def assign_case_manager(row):
     return ward_to_manager.get(row["ward"], "Case Manager Pool")
 
 
-
 def workflow_status(row):
-    """Route each case to an actionable future-state queue."""
-    if row["rule_category"] == "Not Suitable at Current Review":
-        return "No Active Review"
-
-    if row["rule_category"] == "Pending Monitoring":
-        return "Monitoring"
-
-    if row["rule_category"] == "Needs Clinical Review":
+    """Route each case to the case-manager or clinician task queue."""
+    if row["rule_category"] == "Red - No-Go":
         return "Pending Clinician"
 
     if row["risk_band"] == "High Risk":
@@ -386,6 +304,7 @@ def workflow_status(row):
     return "Pending Clinician"
 
 
+@st.cache_resource
 def load_model():
     """Load the saved Random Forest model once per Streamlit process."""
     return joblib.load(MODEL_PATH)
@@ -412,7 +331,7 @@ def load_patient_worklist():
         | (data["potassium"] > 5.5)
     ).astype(int)
 
-    data[["rule_category", "red_flags", "amber_flags", "review_flags"]] = data.apply(
+    data[["rule_category", "red_flags", "amber_flags"]] = data.apply(
         lambda row: pd.Series(rule_based_screening(row)),
         axis=1,
     )
@@ -426,9 +345,11 @@ def load_patient_worklist():
     data["risk_score"] = None
     data["risk_band"] = "Not applicable"
 
-    # Hard-exclusion cases are not sent to the prototype ML model. All other
-    # buckets may still benefit from risk stratification for review support.
-    eligible_mask = data["rule_category"] != "Not Suitable at Current Review"
+    # Red cases are already excluded by rules, so only Amber/Green cases are
+    # sent to the ML risk model.
+    eligible_mask = data["rule_category"].isin(
+        ["Amber - Review Required", "Green - Potential Candidate"]
+    )
 
     if eligible_mask.any():
         data.loc[eligible_mask, "risk_score"] = model.predict_proba(
@@ -456,24 +377,22 @@ def load_patient_worklist():
     return data
 
 
-
 def build_llm_prompt(row):
-    """Build the patient-specific prompt for the four-bucket explanation layer."""
+    """Build the patient-specific prompt sent to the LLM explanation layer."""
     return f"""
-Summary of the patient's screening and prototype risk assessment:
+Summary of patient's clinical screening and AI risk assessment:
 
 Patient ID: {row["patient_id"]}
 Encounter ID: {row["encounter_id"]}
 
-Screening output:
-- Actionable bucket: {row["rule_category"]}
-- Hard exclusion flags: {row["red_flags"]}
-- Monitoring flags: {row["amber_flags"]}
-- Clinical review flags: {row["review_flags"]}
-- Prototype predictive risk score: {row["risk_score"]}
-- Prototype predictive risk band: {row["risk_band"]}
+Patient screening output:
+- Rule-based category: {row["rule_category"]}
+- Red flags: {row["red_flags"]}
+- Amber flags: {row["amber_flags"]}
+- Predictive risk score: {row["risk_score"]}
+- Predictive risk band: {row["risk_band"]}
 
-Key clinical values currently available in the sample dataset:
+Key clinical values:
 - Age: {row["age"]}
 - COPD flag: {row["copd_flag"]}
 - Systolic BP: {row["systolic_bp"]}
@@ -483,11 +402,16 @@ Key clinical values currently available in the sample dataset:
 - SpO2: {row["spo2"]}
 - Oxygen device: {row["oxygen_device"]}
 - Oxygen flow rate: {row["oxygen_flow_rate"]}
+- NEWS2: {row["news2"]}
 - Hb: {row["hb"]}
 - Platelet: {row["platelet"]}
 - ANC: {row["anc"]}
 - Sodium: {row["sodium"]}
 - Potassium: {row["potassium"]}
+- Pending surgery flag: {row["pending_surgery_flag"]}
+- Active procedure flag: {row["active_procedure_flag"]}
+- Active precaution flag: {row["active_precaution_flag"]}
+- Active IV medication flag: {row["active_iv_med_flag"]}
 
 Service / nursing / acceptance assessment:
 - Service need: {row["service_need"]}
@@ -496,43 +420,46 @@ Service / nursing / acceptance assessment:
 - Nursing flags: {row["nursing_flags"]}
 - Patient acceptance likelihood: {row["patient_acceptance_likelihood"]}
 - Counselling required: {row["counselling_required"]}
-- Suggested review pathway: {row["right_siting_recommendation"]}
-- Advisory next action: {row["ai_recommendation"]}
+- Right-siting recommendation: {row["right_siting_recommendation"]}
 
 Please produce the response in this exact format:
 
-**1. Explanation of Screening Bucket**
-Explain why the patient is in the current actionable bucket. Distinguish hard
-exclusion flags, dynamic monitoring flags, and judgement-based clinical review
-flags. Do not invent criteria that are not listed.
+**1. Explanation of Screening Output**
+Provide a short explanation of why the patient received this screening output. Explain both:
+- the rule-based screening category; and
+- the predictive risk score / risk band from the machine learning model.
 
 **2. Key Review Points**
-List the most important points for the case manager or clinician to verify.
+List key points that the case manager or clinician should review, based only on the clinical values provided above.
 
-**3. Advisory Next Action**
-Use this advisory wording exactly:
+**3. Final AI-Supported Right-Siting Recommendation**
+Explain the final AI-supported recommendation based on:
+- clinical screening;
+- predictive risk band;
+- service suitability;
+- nursing / operational assessment;
+- acceptance / counselling needs;
+- right-siting recommendation.
+
+Use the final AI-supported recommendation exactly as stated:
 {row["ai_recommendation"]}
 
-Interpret the buckets as follows:
-- "Potential CH Candidate": no current hard exclusion, monitoring or review
-  trigger was detected from the available sample fields; CM confirmation is
-  still required.
-- "Pending Monitoring": one or more dynamic criteria should be monitored and
-  reassessed after refreshed data or pending results.
-- "Needs Clinical Review": judgement, clinical clarification or detailed
-  medication / procedure / precaution review is required.
-- "Not Suitable at Current Review": a hard exclusion was triggered at this
-  review point. Reassessment may occur if the patient's status changes.
+Do not make a final transfer decision. The final decision remains with the clinical team.
+
+Apply the following interpretation rules strictly:
+- If the rule-based category is "Red - No-Go", explain that the patient is not suitable for CH referral at this stage due to rule-based exclusion criteria.
+- If the rule-based category is "Amber - Review Required" and the predictive risk band is "High Risk", explain that the patient is not suitable for immediate CH referral and requires priority clinical review. Do not describe this as a rule-based red flag exclusion.
+- If the rule-based category is "Amber - Review Required" and the predictive risk band is "Medium Risk", explain that further clinical review is needed before CH referral.
+- If the predictive risk band is "Low Risk", explain that the patient may proceed for CH referral review, subject to case manager / clinician assessment.
+- Do not invent red flag exclusions if the Red flags list is empty.
+- Do not make a final transfer or referral decision on behalf of the clinical team.
 
 **4. Clinical Decision Reminder**
-State that this output is advisory only. Final referral and transfer decisions
-remain with the case manager, clinician and care team.
-
-Also state that this prototype uses sample data and partial field coverage; the
-full criteria catalogue and actual Epic / EAI mappings are not yet implemented.
+State that the final AI-supported recommendation is advisory only. The final referral / transfer decision remains with the case manager, clinician, and care team.
 """
 
 
+@st.cache_resource
 def get_bedrock_client():
     session = boto3.Session(
         aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
@@ -589,17 +516,14 @@ def apply_role_scope(data, role, case_manager):
     return data
 
 
-
 def apply_category_filter(data, category):
-    """Filter cases by the four actionable screening buckets or workflow queues."""
-    bucket_map = {
-        "Potential CH Candidate": "Potential CH Candidate",
-        "Pending Monitoring": "Pending Monitoring",
-        "Needs Clinical Review": "Needs Clinical Review",
-        "Not Suitable at Current Review": "Not Suitable at Current Review",
-    }
-    if category in bucket_map:
-        return data[data["rule_category"] == bucket_map[category]]
+    """Filter cases by dashboard category buttons such as Green or Pending CM."""
+    if category == "Green":
+        return data[data["rule_category"] == "Green - Potential Candidate"]
+    if category == "Amber":
+        return data[data["rule_category"] == "Amber - Review Required"]
+    if category == "Red":
+        return data[data["rule_category"] == "Red - No-Go"]
     if category == "Pending CM":
         return data[data["workflow_status"] == "Pending CM"]
     if category == "Pending Clinician":
@@ -693,9 +617,6 @@ def build_review_record(patient_row, selected_role, final_decision, review_comme
         "patient_id": patient_row["patient_id"],
         "encounter_id": patient_row["encounter_id"],
         "rule_category": patient_row["rule_category"],
-        "red_flags": patient_row.get("red_flags", []),
-        "monitoring_flags": patient_row.get("amber_flags", []),
-        "review_flags": patient_row.get("review_flags", []),
         "workflow_status": patient_row["workflow_status"],
         "risk_score": patient_row["risk_score"],
         "risk_band": patient_row["risk_band"],

@@ -28,11 +28,10 @@ from app.backend import (
 
 
 CATEGORY_OPTIONS = [
+    "Green",
     "All Cases",
-    "Potential CH Candidate",
-    "Pending Monitoring",
-    "Needs Clinical Review",
-    "Not Suitable at Current Review",
+    "Amber",
+    "Red",
     "Pending CM",
     "Pending Clinician",
 ]
@@ -40,13 +39,13 @@ CATEGORY_OPTIONS = [
 # Options used in the final decision dropdown on the Patient Review tab.
 FINAL_DECISION_OPTIONS = [
     "Pending Review",
-    "Confirm Potential CH Candidate",
-    "Continue Monitoring",
-    "Escalate for Clinical Review",
-    "Proceed with Community Hospital Referral Review",
+    "Proceed with Community Hospital Referral",
     "Consider Hospital-at-Home",
-    "Not Suitable at Current Review",
-    "Override / Reclassify",
+    "Continue Acute Hospital Care",
+    "Requires Further Clinical Review",
+    "Requires Further Nursing Review",
+    "Patient / Family Counselling Required",
+    "Not Suitable for Transfer",
 ]
 
 
@@ -304,7 +303,7 @@ def render_header(user_profile):
             <div>
                 <h1>ENCHANTED Model 1: Right-Siting Decision Support Dashboard</h1>
                 <div style="font-size: 22px; color: #1f4e79; font-weight: 700;">
-                    AI-Assisted First-Pass Screening, Risk Stratification and Human Review
+                    Rule-Based Screening, AI Risk Stratification and Right-Siting Review Support
                 </div>
             </div>
             <div class="user-chip">
@@ -338,9 +337,9 @@ def render_header(user_profile):
                 Acute-to-Community Hospital / Hospital-at-Home Right-Siting Support
             </div>
             <div style="font-size: 14px; color: #475569; margin-top: 6px;">
-            This dashboard supports first-pass screening of the eligible inpatient pool, groups cases into actionable
-            review buckets, and surfaces reasons for case manager and clinician review. It does not make final
-            referral or transfer decisions.
+            This dashboard combines rule-based clinical screening, AI-supported risk stratification,
+            service suitability, nursing assessment and acceptance considerations to assist case managers
+            and clinicians in reviewing the appropriate care pathway.
             </div>
         </div>
         """,
@@ -350,16 +349,13 @@ def render_header(user_profile):
         """
         <div style="display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap;">
             <span style="background:#fee2e2; color:#7f1d1d; padding:8px 14px; border-radius:999px; font-weight:600;">
-                Not Suitable: Hard Exclusion
+                Red: Rule-Based Exclusion
             </span>
             <span style="background:#fef3c7; color:#78350f; padding:8px 14px; border-radius:999px; font-weight:600;">
-                Pending Monitoring: Dynamic Review
+                Amber: Clinical Review Required
             </span>
             <span style="background:#dcfce7; color:#14532d; padding:8px 14px; border-radius:999px; font-weight:600;">
-                Potential CH Candidate
-            </span>
-            <span style="background:#e0e7ff; color:#3730a3; padding:8px 14px; border-radius:999px; font-weight:600;">
-                Needs Clinical Review
+                Green: Potential Candidate
             </span>
             <span style="background:#dbeafe; color:#1e3a8a; padding:8px 14px; border-radius:999px; font-weight:600;">
                 AI: Risk Stratification
@@ -370,24 +366,20 @@ def render_header(user_profile):
     )
 
 
-
 def colour_rule_category(value):
-    """Return cell styling for actionable screening buckets and recommendations."""
-    if value == "Potential CH Candidate":
+    """Return cell styling for screening and recommendation status values."""
+    if value == "Green - Potential Candidate":
         return "background-color: #d4edda; color: #155724;"
-    if value == "Pending Monitoring":
+    if value == "Amber - Review Required":
         return "background-color: #fff3cd; color: #856404;"
-    if value == "Needs Clinical Review":
-        return "background-color: #e0e7ff; color: #3730a3;"
-    if value == "Not Suitable at Current Review":
+    if value == "Red - No-Go":
         return "background-color: #f8d7da; color: #721c24;"
-    if value in {
-        "Community Hospital referral review",
-        "Potential CH candidate for case manager confirmation",
-    }:
+    if value == "Community Hospital referral review":
         return "background-color: #d4edda; color: #155724; font-weight: bold;"
-    if "review required" in str(value).lower():
+    if value == "Further clinical review before CH referral":
         return "background-color: #fff3cd; color: #856404; font-weight: bold;"
+    if value == "Pending review":
+        return "background-color: #e2e3e5; color: #383d41; font-weight: bold;"
     return ""
 
 
@@ -405,26 +397,22 @@ def role_scope(shortlisted, user_profile):
     return shortlisted
 
 
-
 def render_metrics(role_scoped):
-    """Render summary metrics for the four future-state screening buckets."""
+    """Render summary metrics for the cases visible to the current user."""
     metric_cols = st.columns(5)
     metric_cols[0].metric("Role-Scoped Cases", len(role_scoped))
     metric_cols[1].metric(
-        "Potential CH Candidate",
-        (role_scoped["rule_category"] == "Potential CH Candidate").sum(),
+        "Green",
+        (role_scoped["rule_category"] == "Green - Potential Candidate").sum(),
     )
     metric_cols[2].metric(
-        "Pending Monitoring",
-        (role_scoped["rule_category"] == "Pending Monitoring").sum(),
+        "Amber",
+        (role_scoped["rule_category"] == "Amber - Review Required").sum(),
     )
-    metric_cols[3].metric(
-        "Needs Clinical Review",
-        (role_scoped["rule_category"] == "Needs Clinical Review").sum(),
-    )
+    metric_cols[3].metric("Red", (role_scoped["rule_category"] == "Red - No-Go").sum())
     metric_cols[4].metric(
-        "Not Suitable at Current Review",
-        (role_scoped["rule_category"] == "Not Suitable at Current Review").sum(),
+        "Pending Clinician",
+        (role_scoped["workflow_status"] == "Pending Clinician").sum(),
     )
 
     st.subheader("AI-Suggested Review Pathway Summary")
@@ -434,12 +422,15 @@ def render_metrics(role_scoped):
         (role_scoped["right_siting_recommendation"] == "Community Hospital review").sum(),
     )
     pathway_cols[1].metric(
-        "Monitoring",
-        (role_scoped["workflow_status"] == "Monitoring").sum(),
+        "Hospital-at-Home Review",
+        (role_scoped["right_siting_recommendation"] == "Hospital-at-Home review").sum(),
     )
     pathway_cols[2].metric(
-        "Pending Clinician",
-        (role_scoped["workflow_status"] == "Pending Clinician").sum(),
+        "Continue Acute Care",
+        (
+            role_scoped["right_siting_recommendation"]
+            == "Continue Acute Hospital care"
+        ).sum(),
     )
     pathway_cols[3].metric(
         "Pending CM",
@@ -664,11 +655,7 @@ def render_worklist_table(filtered_worklist, role_scoped, selected_columns):
                 ),
                 "red_flags": st.column_config.ListColumn("Red Flags", width="large"),
                 "amber_flags": st.column_config.ListColumn(
-                    "Monitoring Flags",
-                    width="large",
-                ),
-                "review_flags": st.column_config.ListColumn(
-                    "Clinical Review Flags",
+                    "Amber Flags",
                     width="large",
                 ),
                 "risk_score": st.column_config.NumberColumn(
@@ -772,9 +759,8 @@ def render_patient_review_tab(shortlisted, role_scoped, user_profile):
     st.write(f"**Rule-based category:** {patient_row['rule_category']}")
     st.write(f"**Workflow status:** {patient_row['workflow_status']}")
     st.write(f"**Assigned case manager:** {patient_row['assigned_case_manager']}")
-    st.write(f"**Hard exclusion flags:** {patient_row['red_flags']}")
-    st.write(f"**Monitoring flags:** {patient_row['amber_flags']}")
-    st.write(f"**Clinical review flags:** {patient_row.get('review_flags', [])}")
+    st.write(f"**Red flags:** {patient_row['red_flags']}")
+    st.write(f"**Amber flags:** {patient_row['amber_flags']}")
 
     if pd.notna(patient_row["risk_score"]):
         st.write(f"**Predictive risk score:** {patient_row['risk_score']:.2f}")
@@ -803,10 +789,10 @@ def render_patient_review_tab(shortlisted, role_scoped, user_profile):
     st.write(f"**AI-supported recommendation:** *{patient_row['ai_recommendation']}*")
 
     final_decision = st.selectbox(
-        "Case manager / clinician action",
+        "Final right-siting decision",
         FINAL_DECISION_OPTIONS,
     )
-    review_comments = st.text_area("Review comments / override or reclassification reason")
+    review_comments = st.text_area("Review comments / override reason")
 
     st.info(
         "The AI model provides decision support only. "
