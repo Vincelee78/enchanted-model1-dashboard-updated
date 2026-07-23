@@ -54,7 +54,7 @@ def _safe_list(value: object) -> list:
 
 def _display_list(value: object) -> str:
     items = _safe_list(value)
-    return "None" if not items else "\n".join(f"• {item}" for item in items)
+    return "None" if not items else "\n".join(f"- {item}" for item in items)
 
 
 def render_patient_table(
