@@ -84,7 +84,7 @@ def render_patient_table(
         "age": st.column_config.NumberColumn("Age", width="small"),
         "los_days": st.column_config.NumberColumn("Days in Hospital", width="small"),
         "days_to_edd": st.column_config.NumberColumn("Days to EDD", width="small"),
-        "rule_category": st.column_config.TextColumn("Screening Bucket", width="large"),
+        "rule_category": st.column_config.TextColumn("Screening Bucket", width="small"),
         "red_flags": st.column_config.ListColumn("Hard Exclusion Flags", width="large"),
         "amber_flags": st.column_config.ListColumn("Monitoring Flags", width="large"),
         "review_flags": st.column_config.ListColumn("Clinical Review Flags", width="large"),
