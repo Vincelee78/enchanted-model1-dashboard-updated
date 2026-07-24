@@ -118,7 +118,6 @@ def configure_page() -> None:
             border: 1px solid #dbeafe;
             border-radius: 20px;
             padding: 27px 24px;
-            min-height: 162px;
             box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
         }
         .screening-bucket-label {
