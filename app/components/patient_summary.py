@@ -6,6 +6,7 @@ from typing import Iterable
 
 import pandas as pd
 import streamlit as st
+import html
 
 from app.backend import (
     BASE_DISPLAY_COLUMNS,
@@ -247,13 +248,46 @@ def _patient_option_label(worklist: pd.DataFrame, patient_id: str) -> str:
     return f"{patient_id} — {row.get('encounter_id', '')} — {row.get('rule_category', '')}"
 
 
-def render_patient_summary(patient_row: pd.Series, *, show_raw_prompt: bool = False) -> None:
+def render_patient_summary(
+    patient_row: pd.Series,
+    *,
+    show_raw_prompt: bool = False,
+) -> None:
     """Render a role-neutral clinical and operational patient summary."""
+
     heading_cols = st.columns(4)
-    heading_cols[0].metric("Patient", patient_row.get("patient_id", "—"))
-    heading_cols[1].metric("Encounter", patient_row.get("encounter_id", "—"))
-    heading_cols[2].metric("Ward", patient_row.get("ward", "—"))
-    heading_cols[3].metric("Screening Bucket", patient_row.get("rule_category", "—"))
+
+    heading_cols[0].metric(
+        "Patient",
+        patient_row.get("patient_id", "—"),
+    )
+    heading_cols[1].metric(
+        "Encounter",
+        patient_row.get("encounter_id", "—"),
+    )
+    heading_cols[2].metric(
+        "Ward",
+        patient_row.get("ward", "—"),
+    )
+
+    screening_bucket = html.escape(
+        str(patient_row.get("rule_category", "—"))
+    )
+
+    with heading_cols[3]:
+        st.markdown(
+            f"""
+            <div class="screening-bucket-card">
+                <div class="screening-bucket-label">
+                    Screening Bucket
+                </div>
+                <div class="screening-bucket-value">
+                    {screening_bucket}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     left, right = st.columns([1.15, 1.0])
     with left:

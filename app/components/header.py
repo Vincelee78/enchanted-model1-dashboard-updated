@@ -113,6 +113,28 @@ def configure_page() -> None:
             box-shadow:0 4px 14px rgba(15,23,42,.06);
             margin:12px 0 16px 0;
         }
+        .screening-bucket-card {
+            background: rgba(255, 255, 255, 0.88);
+            border: 1px solid #dbeafe;
+            border-radius: 20px;
+            padding: 27px 24px;
+            min-height: 162px;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+        }
+        .screening-bucket-label {
+            color: #374151;
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 16px;
+        }
+        .screening-bucket-value {
+            color: #30313d;
+            font-size: 30px;
+            font-weight: 400;
+            line-height: 1.15;
+            white-space: normal;
+            overflow-wrap: break-word;
+        }
         .bucket-row { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
         .bucket-pill { padding:7px 12px; border-radius:999px; font-weight:700; font-size:13px; }
         .pill-red { background:#fee2e2; color:#7f1d1d; }
