@@ -133,7 +133,6 @@ def configure_page() -> None:
             font-weight: 400;
             line-height: 1.15;
             white-space: normal;
-            overflow-wrap: break-word;
         }
         .bucket-row { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
         .bucket-pill { padding:7px 12px; border-radius:999px; font-weight:700; font-size:13px; }
