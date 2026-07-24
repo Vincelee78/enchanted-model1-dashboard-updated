@@ -120,11 +120,6 @@ def configure_page() -> None:
             padding: 27px 24px;
             box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
         }
-        .screening-bucket-label {
-            color: #374151;
-            font-size: 18px;
-            font-weight: 500;
-        }
         .screening-bucket-value {
             color: #30313d;
             font-size: 16px;
