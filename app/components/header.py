@@ -129,7 +129,7 @@ def configure_page() -> None:
         }
         .screening-bucket-value {
             color: #30313d;
-            font-size: 30px;
+            font-size: 16px;
             font-weight: 400;
             line-height: 1.15;
             white-space: normal;
