@@ -124,14 +124,11 @@ def configure_page() -> None:
             color: #374151;
             font-size: 18px;
             font-weight: 500;
-            margin-bottom: 16px;
         }
         .screening-bucket-value {
             color: #30313d;
             font-size: 16px;
             font-weight: 400;
-            line-height: 1.15;
-            white-space: normal;
         }
         .bucket-row { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
         .bucket-pill { padding:7px 12px; border-radius:999px; font-weight:700; font-size:13px; }
